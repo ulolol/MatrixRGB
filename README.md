@@ -4,6 +4,8 @@ A bash implementation of the iconic falling rain animation from the Matrix movie
 
 ![Matrix Rain Animation](https://img.shields.io/badge/bash-5.1%2B-green) ![License](https://img.shields.io/badge/license-MIT-blue)
 
+>*This was originally created by me in ~ 2021. This new update basically improves performance - with the help of Claude + Codex*
+
 ## Features
 
 ✨ **Rainbow Colors** - Smooth 24-bit RGB gradient animations cycling through the entire spectrum using sine wave algorithm (similar to lolcat)
