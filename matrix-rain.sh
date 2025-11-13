@@ -19,6 +19,23 @@ DENSITY=80
 TERM_WIDTH=0
 TERM_HEIGHT=0
 
+RAINBOW_FREQ=0.1
+RAINBOW_CYCLE=63
+FRAME_DELAY_US=100000
+FRAME_DELAY_STR=0.100
+USE_EPOCHREALTIME=0
+
+declare -a COLUMN_STATE      # 0 gap, 1 active stream
+declare -a COLUMN_HEAD       # current head position in rows
+declare -a COLUMN_GAP        # remaining frames before stream restarts
+declare -a COLUMN_LENGTH     # length of active stream
+declare -a COLUMN_COLOR      # color offset per column
+declare -a COLUMN_LAST_CHAR  # character previously used as head
+
+declare -a RAINBOW_TABLE
+RESIZE_REQUEST=0
+NUM_COLUMNS=0
+
 # Katakana character set (Unicode U+FF66 to U+FF9D)
 # This is the authentic Matrix character set
 CHARS=(
@@ -28,6 +45,7 @@ CHARS=(
     "ﾏ" "ﾐ" "ﾑ" "ﾒ" "ﾓ" "ﾔ" "ﾕ" "ﾖ" "ﾗ" "ﾘ"
     "ﾘ" "ﾜ" "ﾞ" "ﾟ"
 )
+CHAR_SET_SIZE=${#CHARS[@]}
 
 ##############################################################################
 # Terminal Setup and Cleanup
@@ -92,22 +110,36 @@ get_terminal_size() {
 # Uses sine wave algorithm similar to lolcat
 ##############################################################################
 
-rainbow_color() {
-    local position=$1
-    local freq=0.1
+init_rainbow_table() {
+    if ((${#RAINBOW_TABLE[@]} > 0)); then
+        return
+    fi
 
-    # Calculate RGB using awk for floating point math
-    # Formula: color = sin(freq * position + phase) * 127 + 128
-    local rgb
-    rgb=$(awk -v pos="$position" -v freq="$freq" 'BEGIN {
+    local data
+    data=$(awk -v freq="$RAINBOW_FREQ" -v cycle="$RAINBOW_CYCLE" 'BEGIN {
         pi = atan2(0,-1)
-        r = int(sin(freq*pos) * 127 + 128)
-        g = int(sin(freq*pos + 2*pi/3) * 127 + 128)
-        b = int(sin(freq*pos + 4*pi/3) * 127 + 128)
-        print r ";" g ";" b
+        for (i = 0; i < cycle; i++) {
+            r = int(sin(freq*i) * 127 + 128)
+            g = int(sin(freq*i + 2*pi/3) * 127 + 128)
+            b = int(sin(freq*i + 4*pi/3) * 127 + 128)
+            printf "%d;%d;%d\n", r, g, b
+        }
     }')
 
-    echo "$rgb"
+    local i=0
+    while IFS= read -r line; do
+        RAINBOW_TABLE[$i]=$line
+        ((i++))
+    done <<< "$data"
+}
+
+rainbow_color() {
+    local position=$1
+    local index=$((position % RAINBOW_CYCLE))
+    if ((index < 0)); then
+        index=$((index + RAINBOW_CYCLE))
+    fi
+    echo "${RAINBOW_TABLE[$index]}"
 }
 
 ##############################################################################
@@ -115,76 +147,86 @@ rainbow_color() {
 # Manages a single falling column of characters
 ##############################################################################
 
-rain_column() {
-    local col=$1
-    local speed=$2
-    local char_set_size=${#CHARS[@]}
+calculate_frame_delay() {
+    local ms=$((160 - SPEED * 12))
+    if ((ms < 20)); then
+        ms=20
+    fi
+    FRAME_DELAY_US=$((ms * 1000))
+    printf -v FRAME_DELAY_STR '0.%03d' "$ms"
+}
 
-    # Column state
-    local pos=0
-    local length=$((RANDOM % (TERM_HEIGHT / 2) + 3))
-    local gap=$((RANDOM % 10 + 5))
-    local in_gap=true
-    local color_offset=$((RANDOM % 360))
+init_columns() {
+    local num_columns=$((TERM_WIDTH * DENSITY / 100))
+    ((num_columns < 1)) && num_columns=1
 
-    # Trail history (position -> character)
-    declare -A trail
+    NUM_COLUMNS=$num_columns
 
-    while true; do
-        # Delay based on speed (1-10, inverted: 1=slow, 10=fast)
-        local delay=$(echo "scale=3; 1.0 - ($speed - 1) * 0.08" | bc -l 2>/dev/null || echo "0.5")
-        sleep "$delay"
-
-        # Handle gap before stream starts
-        if $in_gap; then
-            gap=$((gap - 1))
-            if ((gap <= 0)); then
-                in_gap=false
-                pos=1
-                length=$((RANDOM % (TERM_HEIGHT / 2) + 3))
-            fi
-            continue
-        fi
-
-        # Move current stream down
-        local rainbow_pos=$((pos + color_offset))
-        local rgb=$(rainbow_color "$rainbow_pos")
-
-        # Print head character (bright, full intensity)
-        if ((pos >= 1 && pos <= TERM_HEIGHT)); then
-            local char="${CHARS[$((RANDOM % char_set_size))]}"
-            printf '\e[%d;%dH\e[1;38;2;%sm%s\e[m' "$pos" "$col" "$rgb" "$char"
-        fi
-
-        # Print trail characters (dimmer)
-        local trail_pos=$((pos - 1))
-        if ((trail_pos >= 1 && trail_pos <= TERM_HEIGHT)); then
-            if [[ -n "${trail[$trail_pos]}" ]]; then
-                local trail_rainbow=$((trail_pos + color_offset))
-                local trail_rgb=$(rainbow_color "$trail_rainbow")
-                printf '\e[%d;%dH\e[2;38;2;%sm%s\e[m' "$trail_pos" "$col" "$trail_rgb" "${trail[$trail_pos]}"
-            fi
-        fi
-
-        # Store character for trail
-        trail[$pos]="${CHARS[$((RANDOM % char_set_size))]}"
-
-        # Remove character beyond trail length
-        local erase_pos=$((pos - length))
-        if ((erase_pos >= 1)); then
-            unset 'trail[$erase_pos]'
-            printf '\e[%d;%dH ' "$erase_pos" "$col"
-        fi
-
-        # Reset stream and gap when we reach bottom
-        pos=$((pos + 1))
-        if ((pos > TERM_HEIGHT + length)); then
-            pos=0
-            in_gap=true
-            gap=$((RANDOM % 10 + 5))
-            trail=()
-        fi
+    for ((col=1; col<=NUM_COLUMNS; col++)); do
+        COLUMN_STATE[$col]=0
+        COLUMN_HEAD[$col]=0
+        COLUMN_GAP[$col]=$((RANDOM % 10 + 5))
+        COLUMN_LENGTH[$col]=$((RANDOM % (TERM_HEIGHT / 2 + 1) + 3))
+        COLUMN_COLOR[$col]=$((RANDOM % RAINBOW_CYCLE))
+        COLUMN_LAST_CHAR[$col]=""
     done
+
+}
+
+draw_column_frame() {
+    local col=$1
+
+    if ((COLUMN_STATE[$col] == 0)); then
+        local gap=${COLUMN_GAP[$col]}
+        if ((gap > 0)); then
+            COLUMN_GAP[$col]=$((gap - 1))
+            return
+        fi
+        COLUMN_STATE[$col]=1
+        COLUMN_HEAD[$col]=1
+    fi
+
+    local head=${COLUMN_HEAD[$col]}
+    local length=${COLUMN_LENGTH[$col]}
+    local color_offset=${COLUMN_COLOR[$col]}
+    local prev_char=${COLUMN_LAST_CHAR[$col]}
+
+    if ((head >= 1 && head <= TERM_HEIGHT)); then
+        local char="${CHARS[$((RANDOM % CHAR_SET_SIZE))]}"
+        COLUMN_LAST_CHAR[$col]=$char
+        local rainbow_pos=$((head + color_offset))
+        local rgb
+        rgb=$(rainbow_color "$rainbow_pos")
+        printf '\e[%d;%dH\e[1;38;2;%sm%s' "$head" "$col" "$rgb" "$char"
+    fi
+
+    local trail_pos=$((head - 1))
+    if ((trail_pos >= 1 && trail_pos <= TERM_HEIGHT)); then
+        if [[ -n $prev_char ]]; then
+            local trail_rainbow=$((trail_pos + color_offset))
+            local trail_rgb
+            trail_rgb=$(rainbow_color "$trail_rainbow")
+            printf '\e[%d;%dH\e[2;38;2;%sm%s' "$trail_pos" "$col" "$trail_rgb" "$prev_char"
+        fi
+    fi
+
+    local erase_pos=$((head - length))
+    if ((erase_pos >= 1)); then
+        if ((erase_pos <= TERM_HEIGHT)); then
+            printf '\e[0m\e[%d;%dH ' "$erase_pos" "$col"
+        fi
+    fi
+
+    COLUMN_HEAD[$col]=$((head + 1))
+
+    if ((head > TERM_HEIGHT + length)); then
+        COLUMN_STATE[$col]=0
+        COLUMN_HEAD[$col]=0
+        COLUMN_GAP[$col]=$((RANDOM % 10 + 5))
+        COLUMN_LENGTH[$col]=$((RANDOM % (TERM_HEIGHT / 2 + 1) + 3))
+        COLUMN_COLOR[$col]=$(((color_offset + RANDOM % RAINBOW_CYCLE) % RAINBOW_CYCLE))
+        COLUMN_LAST_CHAR[$col]=""
+    fi
 }
 
 ##############################################################################
@@ -192,18 +234,47 @@ rain_column() {
 ##############################################################################
 
 main_loop() {
-    local num_columns=$((TERM_WIDTH * DENSITY / 100))
+    while true; do
+        local frame_start_us frame_end_us elapsed sleep_us
 
-    # Ensure at least 1 column
-    num_columns=$((num_columns < 1 ? 1 : num_columns))
+        if ((USE_EPOCHREALTIME)); then
+            frame_start_us=${EPOCHREALTIME//./}
+        fi
 
-    # Spawn rain processes for each column
-    for ((col=1; col<=num_columns; col++)); do
-        rain_column "$col" "$SPEED" &
+        if ((RESIZE_REQUEST)); then
+            get_terminal_size
+            printf '\e[2J\e[H'
+            init_columns
+            RESIZE_REQUEST=0
+        fi
+
+        for ((col=1; col<=NUM_COLUMNS; col++)); do
+            draw_column_frame "$col"
+        done
+
+        printf '\e[0m'
+
+        if ((USE_EPOCHREALTIME)); then
+            frame_end_us=${EPOCHREALTIME//./}
+            elapsed=$((frame_end_us - frame_start_us))
+            sleep_us=$((FRAME_DELAY_US - elapsed))
+            if ((sleep_us > 0)); then
+                local sleep_arg=""
+                local sleep_sec=$((sleep_us / 1000000))
+                local sleep_rem=$((sleep_us % 1000000))
+                if ((sleep_sec > 0)); then
+                    printf -v sleep_arg '%d.%06d' "$sleep_sec" "$sleep_rem"
+                elif ((sleep_rem > 0)); then
+                    printf -v sleep_arg '0.%06d' "$sleep_rem"
+                fi
+                if [[ -n $sleep_arg ]]; then
+                    sleep "$sleep_arg"
+                fi
+            fi
+        else
+            sleep "$FRAME_DELAY_STR"
+        fi
     done
-
-    # Wait for all background processes
-    wait
 }
 
 ##############################################################################
@@ -269,20 +340,12 @@ parse_arguments() {
 ##############################################################################
 
 cleanup() {
-    # Kill all background processes
-    jobs -p | xargs -r kill 2>/dev/null
-    # Restore terminal
+    printf '\e[0m'
     restore_terminal
 }
 
 on_sigwinch() {
-    # Terminal was resized
-    get_terminal_size
-    # Kill all columns and restart
-    jobs -p | xargs -r kill 2>/dev/null
-    printf '\e[2J'  # Clear screen
-    main_loop &
-    wait
+    RESIZE_REQUEST=1
 }
 
 on_interrupt() {
@@ -294,8 +357,20 @@ main() {
     # Parse arguments
     parse_arguments "$@" || exit 1
 
+    # Detect high-resolution timing support
+    if [[ -n ${EPOCHREALTIME-} ]]; then
+        USE_EPOCHREALTIME=1
+    fi
+
+    # Precompute timing and color tables
+    calculate_frame_delay
+    init_rainbow_table
+
     # Setup terminal
     setup_terminal
+
+    # Initialize columns based on current terminal size
+    init_columns
 
     # Setup signal handlers
     trap cleanup EXIT
