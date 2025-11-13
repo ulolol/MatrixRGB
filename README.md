@@ -340,7 +340,7 @@ To enhance this project:
 
 ## License
 
-MIT License - Feel free to use, modify, and distribute!
+Distributed as is under the MIT License
 
 ## See Also
 
