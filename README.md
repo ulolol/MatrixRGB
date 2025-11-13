@@ -4,7 +4,7 @@ A bash implementation of the iconic falling rain animation from the Matrix movie
 
 ![Matrix Rain Animation](https://img.shields.io/badge/bash-5.1%2B-green) ![License](https://img.shields.io/badge/license-MIT-blue)
 
->*This was originally created by me in ~ 2021. This new update basically improves performance - with the help of Claude + Codex*
+>*This was originally created by me in ~ 2020, during COVID, after I re-watched all the Matrix movies. This new update basically improves performance - with the help of Claude + Codex*
 
 ## Features
 
