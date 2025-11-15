@@ -20,10 +20,12 @@ VERSION="${1:-1.0.0}"
 VERBOSE=false
 
 # Supported platforms
-declare -A PLATFORMS=(
-    [linux/amd64]="matrix-rain-linux-x86_64"
-    [linux/arm64]="matrix-rain-linux-arm64"
-    [linux/arm]="matrix-rain-linux-arm32"
+TARGETS=(
+    "linux/amd64:matrix-rain-linux-x86_64"
+    "linux/arm64:matrix-rain-linux-arm64"
+    "linux/arm:matrix-rain-linux-arm32"
+    "darwin/amd64:matrix-rain-darwin-amd64"
+    "darwin/arm64:matrix-rain-darwin-arm64"
 )
 
 print_header() {
@@ -115,9 +117,10 @@ echo ""
 BUILD_COUNT=0
 FAILED_BUILDS=0
 
-for platform in "${!PLATFORMS[@]}"; do
+for target in "${TARGETS[@]}"; do
+    platform="${target%%:*}"
+    OUTPUT_NAME="${target#*:}"
     IFS='/' read -r OS ARCH <<< "$platform"
-    OUTPUT_NAME="${PLATFORMS[$platform]}"
     OUTPUT_PATH="$BUILD_DIR/$OUTPUT_NAME"
 
     print_info "Building for $platform..."
@@ -138,10 +141,10 @@ for platform in "${!PLATFORMS[@]}"; do
     if eval "$BUILD_CMD" 2>&1; then
         SIZE=$(du -h "$OUTPUT_PATH" | cut -f1)
         print_success "Built: $OUTPUT_NAME ($SIZE)"
-        ((BUILD_COUNT++))
+        ((BUILD_COUNT += 1))
     else
         print_error "Failed to build: $OUTPUT_NAME"
-        ((FAILED_BUILDS++))
+        ((FAILED_BUILDS += 1))
     fi
 done
 
