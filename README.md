@@ -5,9 +5,9 @@ A **cross-platform** implementation of the iconic falling rain animation from th
 ## Available Implementations
 
 - **Bash** (`matrix-rain.sh`) - Pure bash, no compilation needed
-- **Go** (`main.go`) - Compiled binary, runs on x86_64 PC and Android Termux
+- **Go** (`main.go`) - Compiled binary for Linux, macOS, and Android Termux
 
-![Matrix Rain Animation](https://img.shields.io/badge/bash-5.1%2B-green) ![Go](https://img.shields.io/badge/go-1.16%2B-00ADD8) ![License](https://img.shields.io/badge/license-MIT-blue)
+![Matrix Rain Animation](https://img.shields.io/badge/bash-5.1%2B-green) ![Go](https://img.shields.io/badge/go-1.25.4-00ADD8) ![License](https://img.shields.io/badge/license-MIT-blue)
 
 >*This was originally created in ~ 2020, during COVID, after rewatching all the Matrix movies. This new update adds a high-performance Go implementation with cross-platform support - with the help of Claude + Codex*
 
@@ -40,7 +40,7 @@ A **cross-platform** implementation of the iconic falling rain animation from th
 - *Optional*: `tput` (for better terminal detection, fallback to automatic detection)
 
 ### Go Implementation
-- **Go 1.16+** (for building from source)
+- **Go 1.25.4+** (for building from source)
 - **Terminal with 24-bit true color support** (most modern terminals)
 - No additional runtime dependencies
 
@@ -67,7 +67,7 @@ matrix-rain  # Run from anywhere
 
 #### Build from Source
 
-**Requirements**: Go 1.16+
+**Requirements**: Go 1.25.4+
 
 ```bash
 # Build for your current system
@@ -103,13 +103,17 @@ chmod +x build.sh
 - `linux/amd64` - Linux x86_64 PC (Intel/AMD processors)
 - `linux/arm64` - Linux ARM64 (Android Termux, Raspberry Pi 4)
 - `linux/arm` - Linux ARMv7 (Older Android devices, Raspberry Pi 3)
+- `darwin/amd64` - macOS Intel (x86_64)
+- `darwin/arm64` - macOS Apple Silicon (M1/M2)
 
 Binaries will be in the `build/` directory:
 ```
 build/
-├── matrix-rain-linux-x86_64   # x86_64 PC
-├── matrix-rain-linux-arm64    # Android Termux / ARM64
-└── matrix-rain-linux-arm32    # ARMv7 (32-bit)
+├── matrix-rain-darwin-amd64   # macOS Intel
+├── matrix-rain-darwin-arm64    # macOS Apple Silicon
+├── matrix-rain-linux-x86_64    # Linux x86_64
+├── matrix-rain-linux-arm64     # Linux ARM64 (Android Termux / Raspberry Pi 4)
+└── matrix-rain-linux-arm32     # Linux ARMv7 (Android / Raspberry Pi 3)
 ```
 
 #### Using Pre-built Binaries
@@ -324,8 +328,8 @@ printf '\e[38;5;%dm' $(color_to_256 $r $g $b)
 
 ### Go Implementation Specifics
 
-**Language**: Go 1.16+
-**Architecture**: Native compiled binary
+**Language**: Go 1.25.4+  
+**Architecture**: Native compiled binary  
 **Key Differences from Bash**:
 
 1. **Concurrency**: Uses goroutines for efficient frame rendering (one per animation frame cycle)
