@@ -51,6 +51,7 @@ type winsize struct {
 type config struct {
 	speed   int
 	density int
+	blackBg bool
 }
 
 func main() {
@@ -79,7 +80,7 @@ func main() {
 	columns := initColumns(numColumns, height, len(rainbowTable))
 
 	writer := bufio.NewWriter(os.Stdout)
-	setupTerminal(writer)
+	setupTerminal(writer, cfg)
 	defer restoreTerminal(writer)
 
 	resizeCh := make(chan os.Signal, 1)
@@ -120,10 +121,13 @@ loop:
 		frameStart := time.Now()
 
 		for idx := range columns {
-			drawColumnFrame(writer, idx, &columns[idx], height, rainbowTable)
+			drawColumnFrame(writer, idx, &columns[idx], height, rainbowTable, cfg)
 		}
 
 		writer.WriteString("\033[0m")
+		if cfg.blackBg {
+			writer.WriteString("\033[40m")
+		}
 		writer.Flush()
 
 		elapsed := time.Since(frameStart)
@@ -165,6 +169,8 @@ func parseArguments(args []string) (config, bool, error) {
 				return cfg, false, fmt.Errorf("density must be an integer between 1 and 100")
 			}
 			cfg.density = value
+		case "-b", "--bg-black":
+			cfg.blackBg = true
 		default:
 			return cfg, false, fmt.Errorf("invalid option: %s", arg)
 		}
@@ -185,12 +191,15 @@ OPTIONS:
               1 = slow, 10 = fast
   -d DENSITY  Column density (1-100%, default: 80)
               Percentage of terminal width filled with columns
+  -b          Enable black background (default: transparent)
   -h          Show this help message
 
 EXAMPLES:
   matrix-rain                    # Default settings
   matrix-rain -s 8 -d 100        # Fast animation, full density
   matrix-rain -s 2 -d 50         # Slow animation, sparse
+  matrix-rain -b                 # With black background
+  matrix-rain -s 7 -d 90 -b      # Combine options
 
 CONTROLS:
   Ctrl+C      Stop the animation
@@ -235,14 +244,18 @@ func initColumns(count, height, rainbowLen int) []column {
 
 	cols := make([]column, count)
 	for idx := range cols {
-		cols[idx].gap = rand.Intn(10) + 5
-		cols[idx].length = rand.Intn(height/2+1) + 3
+		// Larger gap range (0-150) to heavily stagger column starts
+		cols[idx].gap = rand.Intn(150)
+		// Much longer columns: between 30% and 100% of terminal height
+		minLength := height * 3 / 10
+		maxLength := height
+		cols[idx].length = rand.Intn(maxLength-minLength+1) + minLength
 		cols[idx].colorOffset = rand.Intn(rainbowLen)
 	}
 	return cols
 }
 
-func drawColumnFrame(writer *bufio.Writer, idx int, col *column, height int, rainbowTable []string) {
+func drawColumnFrame(writer *bufio.Writer, idx int, col *column, height int, rainbowTable []string, cfg config) {
 	if !col.active {
 		if col.gap > 0 {
 			col.gap--
@@ -272,7 +285,11 @@ func drawColumnFrame(writer *bufio.Writer, idx int, col *column, height int, rai
 
 	erasePos := head - length
 	if erasePos >= 1 && erasePos <= height {
-		fmt.Fprintf(writer, "\033[0m\033[%d;%dH ", erasePos, idx+1)
+		if cfg.blackBg {
+			fmt.Fprintf(writer, "\033[%d;%dH\033[40m ", erasePos, idx+1)
+		} else {
+			fmt.Fprintf(writer, "\033[0m\033[%d;%dH ", erasePos, idx+1)
+		}
 	}
 
 	col.head = head + 1
@@ -341,11 +358,15 @@ func ioctlGetWinsize(fd uintptr) (int, int, bool) {
 	return 0, 0, false
 }
 
-func setupTerminal(writer *bufio.Writer) {
+func setupTerminal(writer *bufio.Writer, cfg config) {
 	writer.WriteString("\033[?1049h")
 	writer.WriteString("\033[2J")
 	writer.WriteString("\033[?25l")
 	writer.WriteString("\033[?7l")
+	if cfg.blackBg {
+		writer.WriteString("\033[40m")
+		writer.WriteString("\033[2J")
+	}
 	writer.Flush()
 }
 
