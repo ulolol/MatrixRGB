@@ -1,2 +1,9 @@
+# Ignore caches
 .gocache/
 .claude/
+
+# Ignore test bins
+AILog.md
+
+# Ignore Claude Code fixes logs
+matrix-rain

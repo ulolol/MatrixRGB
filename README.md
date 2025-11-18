@@ -31,6 +31,10 @@ A **cross-platform** implementation of the iconic falling rain animation from th
 
 🔄 **Responsive** - Handles terminal resize events (SIGWINCH) dynamically
 
+## Demo
+
+![Matrix Rain Demo](matrix-rain-demo.gif)
+
 ## Requirements
 
 ### Bash Implementation
