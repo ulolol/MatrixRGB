@@ -1,5 +1,7 @@
 # Matrix Digital Rain - Rainbow Edition
 
+![Logo](matrixrgb-logo-2_github.gif)
+
 A **cross-platform** implementation of the iconic falling rain animation from the Matrix movies with rainbow colors, inspired by `cmatrix | lolcat`.
 
 ## Available Implementations
